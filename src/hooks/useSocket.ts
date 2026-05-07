@@ -11,6 +11,13 @@ export interface AgentThought {
   timestamp?: string
 }
 
+export interface AgentLog {
+  project_id: string
+  level: "info" | "warn" | "error"
+  message: string
+  timestamp?: string
+}
+
 export interface AgentResponse {
   project_id: string
   agent: string
@@ -44,6 +51,7 @@ export interface ProjectComplete {
 interface UseSocketOptions {
   workspaceId: string
   onAgentThought?: (data: AgentThought) => void
+  onAgentLog?: (data: AgentLog) => void
   onAgentResponse?: (data: AgentResponse) => void
   onProjectPlan?: (data: ProjectPlan) => void
   onProjectTasks?: (data: { project_id: string; tasks: any[] }) => void
@@ -60,6 +68,7 @@ interface UseSocketOptions {
 export function useSocket({
   workspaceId,
   onAgentThought,
+  onAgentLog,
   onAgentResponse,
   onProjectPlan,
   onProjectTasks,
@@ -96,17 +105,18 @@ export function useSocket({
     })
 
     socket.on("agent:thought", (data) => onAgentThought?.(data))
+    socket.on("agent:log",     (data) => onAgentLog?.(data))
     socket.on("agent:response", (data) => onAgentResponse?.(data))
-    socket.on("project:plan", (data) => onProjectPlan?.(data))
-    socket.on("project:tasks", (data) => onProjectTasks?.(data))
+    socket.on("project:plan",   (data) => onProjectPlan?.(data))
+    socket.on("project:tasks",  (data) => onProjectTasks?.(data))
     socket.on("project:walkthrough", (data) => onProjectWalkthrough?.(data))
-    socket.on("project:building", (data) => onProjectBuilding?.(data))
+    socket.on("project:building",    (data) => onProjectBuilding?.(data))
     socket.on("project:complete", (data) => { onProjectComplete?.(data); onAgentComplete?.(data) })
-    socket.on("project:error", (data) => onProjectError?.(data))
+    socket.on("project:error",    (data) => onProjectError?.(data))
     socket.on("project:progress", (data) => onProjectProgress?.(data))
     // Backend emits project:file_created when a file is written to disk
     socket.on("project:file_created", (data) => onFileChanged?.(data))
-    socket.on("agent:stream", (data) => onAgentStream?.(data))
+    socket.on("agent:stream",   (data) => onAgentStream?.(data))
     socket.on("agent:complete", (data) => onAgentComplete?.(data))
 
     return () => {
@@ -151,21 +161,14 @@ export function useSocket({
     [workspaceId]
   )
 
-  const approvePlan = useCallback(
+  const cancelBuild = useCallback(
     () => {
-      socketRef.current?.emit("plan:approve", { project_id: workspaceId })
-    },
-    [workspaceId]
-  )
-
-  const rejectPlan = useCallback(
-    () => {
-      socketRef.current?.emit("plan:reject", { project_id: workspaceId })
+      socketRef.current?.emit("project:cancel", { project_id: workspaceId })
     },
     [workspaceId]
   )
 
   const isConnected = () => socketRef.current?.connected ?? false
 
-  return { sendChat, startProject, requestFileTree, readFile, approvePlan, rejectPlan, isConnected, socket: socketRef }
+  return { sendChat, startProject, requestFileTree, readFile, cancelBuild, isConnected, socket: socketRef }
 }
