@@ -193,7 +193,7 @@ export default function SettingsPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await api.get(`/api/auth/me?token=${authToken()}`)
+        const res = await api.get(`/api/auth/me`)
         const u = res.data
         setProfile(u)
         setName(u.name ?? "")
@@ -212,7 +212,7 @@ export default function SettingsPage() {
     setSavingProfile(true)
     try {
       const res = await api.patch(
-        `/api/auth/me?token=${authToken()}`,
+        `/api/auth/me`,
         { full_name: name.trim() || null }
       )
       setProfile((p) => p ? { ...p, name: res.data.user.name } : p)
@@ -237,7 +237,7 @@ export default function SettingsPage() {
     }
     setSavingPwd(true)
     try {
-      await api.post(`/api/auth/change-password?token=${authToken()}`, {
+      await api.post(`/api/auth/change-password`, {
         current_password: currentPwd,
         new_password: newPwd,
       })
@@ -268,7 +268,7 @@ export default function SettingsPage() {
 
   const handleDeleteAccount = async () => {
     try {
-      await api.delete(`/api/auth/me?token=${authToken()}`)
+      await api.delete(`/api/auth/me`)
       localStorage.removeItem("marscoder_access_token")
       localStorage.removeItem("marscoder_refresh_token")
       toast.success("Account deleted.")

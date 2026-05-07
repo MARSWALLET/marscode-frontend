@@ -128,7 +128,7 @@ function TopUpModal({ onClose, korapayKey }: { onClose: () => void; korapayKey: 
     setLoading(true)
     try {
       const res = await api.post(
-        `/api/billing/topup?token=${authToken()}`,
+        `/api/billing/topup`,
         finalAmount,
         { headers: { "Content-Type": "application/json" } }
       )
@@ -233,10 +233,10 @@ export default function BillingPage() {
       const token = authToken()
       try {
         const [usageRes, subRes, plansRes, txRes, pricingRes] = await Promise.allSettled([
-          api.get(`/api/billing/usage?token=${token}&days=30`),
-          api.get(`/api/billing/subscription?token=${token}`),
+          api.get(`/api/billing/usage?days=30`),
+          api.get(`/api/billing/subscription`),
           api.get(`/api/billing/plans`),
-          api.get(`/api/billing/transactions?token=${token}&limit=10`),
+          api.get(`/api/billing/transactions?limit=10`),
           api.get(`/api/billing/pricing`),
         ])
 
