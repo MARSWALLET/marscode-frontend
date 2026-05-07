@@ -51,6 +51,7 @@ interface UseSocketOptions {
   onProjectBuilding?: (data: { project_id: string; message: string }) => void
   onProjectComplete?: (data: ProjectComplete) => void
   onProjectError?: (data: ProjectError) => void
+  onProjectProgress?: (data: { project_id: string; step_id: string; status: string }) => void
   onFileChanged?: (data: { project_id: string; path: string }) => void
   onAgentStream?: (data: { token: string; project_id: string }) => void
   onAgentComplete?: (data: { project_id: string; message?: string }) => void
@@ -66,6 +67,7 @@ export function useSocket({
   onProjectBuilding,
   onProjectComplete,
   onProjectError,
+  onProjectProgress,
   onFileChanged,
   onAgentStream,
   onAgentComplete,
@@ -101,7 +103,9 @@ export function useSocket({
     socket.on("project:building", (data) => onProjectBuilding?.(data))
     socket.on("project:complete", (data) => { onProjectComplete?.(data); onAgentComplete?.(data) })
     socket.on("project:error", (data) => onProjectError?.(data))
-    socket.on("project:file_changed", (data) => onFileChanged?.(data))
+    socket.on("project:progress", (data) => onProjectProgress?.(data))
+    // Backend emits project:file_created when a file is written to disk
+    socket.on("project:file_created", (data) => onFileChanged?.(data))
     socket.on("agent:stream", (data) => onAgentStream?.(data))
     socket.on("agent:complete", (data) => onAgentComplete?.(data))
 
