@@ -15,8 +15,9 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { api } from "@/lib/api"
 import { useSocket, AgentThought, AgentResponse } from "@/hooks/useSocket"
+import { api } from "@/lib/api"
+import { Square } from "lucide-react"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -348,7 +349,12 @@ export default function WorkspaceIDEPage() {
           api.get(`/api/workspaces/${id}`, { headers: authHeader() }),
           api.get(`/api/workspaces/${id}/messages`, { headers: authHeader() }),
         ])
-        setWorkspace(metaRes.data.workspace)
+        const ws = metaRes.data.workspace
+        setWorkspace(ws)
+        // Restore build state on reload
+        if (ws?.status === "in_progress") {
+          setAgentState("coding")
+        }
         const history: Message[] = histRes.data.messages.map((m: any) => ({
           id: m.id, role: m.role === "user" ? "user" : "agent",
           agent_type: m.agent_type, content: m.content, created_at: m.created_at,
@@ -450,6 +456,22 @@ export default function WorkspaceIDEPage() {
             </Badge>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+            {agentState === "coding" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 border-red-500/30 text-red-500 hover:bg-red-500/10 hover:text-red-500 text-[11px] px-2"
+                onClick={() => {
+                  socket.current?.emit("project:cancel", { project_id: id })
+                  setAgentState("idle")
+                  setSending(false)
+                  setThoughts([])
+                  toast.info("Build stopped.")
+                }}
+              >
+                <Square size={11} className="fill-current" /> Stop
+              </Button>
+            )}
             {connected
               ? <><Wifi className="w-3.5 h-3.5 text-green-500" /> <span className="hidden sm:inline">Connected</span></>
               : <><WifiOff className="w-3.5 h-3.5 text-red-400" /> <span className="hidden sm:inline">Reconnecting…</span></>}
