@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import {
   Send, Bot, User, Code2, FileText, CheckCircle2, CircleDashed,
   ArrowLeft, Loader2, ChevronRight, ChevronDown, FolderOpen, File,
-  Wifi, WifiOff, X, Sparkles, Zap, Globe, Terminal,
+  Wifi, WifiOff, X, Sparkles, Zap, Globe, Terminal, ListChecks, Clock,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -42,6 +42,21 @@ interface WorkspaceInfo {
   id: string
   name: string
   status: string
+}
+
+interface PlanStep {
+  id: string
+  title: string
+  description: string
+  agent: string
+  files_affected: string[]
+}
+
+interface ProjectPlanData {
+  title: string
+  description: string
+  tech_stack: Record<string, string>
+  steps: PlanStep[]
 }
 
 function authHeader() {
@@ -215,6 +230,8 @@ export default function WorkspaceIDEPage() {
   const [agentState, setAgentState] = useState<AgentState>("idle")
   // Live thought stream (cleared on response)
   const [thoughts, setThoughts] = useState<{ agent: string; thought: string }[]>([])
+  // Plan from planner agent — shown in side panel
+  const [plan, setPlan] = useState<ProjectPlanData | null>(null)
   const [fileTree, setFileTree] = useState<FileNode[]>([])
   const [activeFile, setActiveFile] = useState<string | null>(null)
   const [fileContent, setFileContent] = useState<string | null>(null)
@@ -249,15 +266,17 @@ export default function WorkspaceIDEPage() {
       }
     },
 
-    // When a project plan is generated
-    onProjectPlan: ({ project_id, plan }) => {
+    // When a project plan is generated — show in side panel, brief note in chat
+    onProjectPlan: ({ project_id, plan: planData }) => {
       if (project_id !== id) return
-      setAgentState("coding")
+      setAgentState("idle")
       setThoughts([])
-      const summary = plan?.description || `Implementation plan ready — ${plan?.steps?.length ?? 0} steps.`
+      setSending(false)
+      if (planData) setPlan(planData)
+      // Just a short acknowledgement in chat — full plan is in the side panel
       setMessages(prev => [...prev, {
         id: makeId(), role: "agent", agent_type: "planner",
-        content: `📋 **Plan ready:** ${summary}`,
+        content: `📋 Plan ready: **${planData?.title ?? "Implementation Plan"}** (${planData?.steps?.length ?? 0} steps) — see the panel →`,
         created_at: new Date().toISOString()
       }])
     },
@@ -389,8 +408,8 @@ export default function WorkspaceIDEPage() {
     setActiveFile(path); setFileContent(null); setLoadingFile(true); readFile(path)
   }
 
-  // Panel shows only when there are actual files OR a file is open
-  const isPanelOpen = fileTree.length > 0 || activeFile !== null
+  // Panel shows when: files exist, file open, OR a plan was generated
+  const isPanelOpen = fileTree.length > 0 || activeFile !== null || plan !== null
 
   if (loadingMeta) {
     return (
@@ -497,8 +516,16 @@ export default function WorkspaceIDEPage() {
             {/* Panel header */}
             <div className="h-14 border-b border-border/40 flex items-center px-4 shrink-0 bg-muted/20">
               <div className="flex items-center gap-2">
-                <Code2 className="w-4 h-4 text-primary" />
-                <span className="font-semibold text-sm">{activeFile ? activeFile.split("/").pop() : "File Explorer"}</span>
+                {activeFile
+                  ? <Code2 className="w-4 h-4 text-primary" />
+                  : plan && fileTree.length === 0
+                  ? <ListChecks className="w-4 h-4 text-primary" />
+                  : <Code2 className="w-4 h-4 text-primary" />}
+                <span className="font-semibold text-sm">
+                  {activeFile ? activeFile.split("/").pop()
+                    : plan && fileTree.length === 0 ? "Implementation Plan"
+                    : "File Explorer"}
+                </span>
               </div>
               <div className="ml-auto flex items-center gap-2">
                 {agentState === "coding" && (
@@ -510,18 +537,27 @@ export default function WorkspaceIDEPage() {
                     <X className="w-3.5 h-3.5" />
                   </Button>
                 )}
+                {plan && !activeFile && (
+                  <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground"
+                    onClick={() => setPlan(null)}>
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                )}
               </div>
             </div>
 
             <ScrollArea className="flex-1 p-3">
               <AnimatePresence mode="wait">
+                {/* File content view */}
                 {activeFile ? (
                   <motion.div key="file-content" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
                     {loadingFile
                       ? <div className="flex justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
                       : <pre className="text-xs text-muted-foreground leading-relaxed font-mono whitespace-pre-wrap break-all bg-muted/30 p-3 rounded-xl">{fileContent ?? "Empty file"}</pre>}
                   </motion.div>
+
                 ) : fileTree.length > 0 ? (
+                  /* File tree */
                   <motion.div key="file-tree" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                     <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-1">Explorer</div>
                     <div className="space-y-0.5">
@@ -531,6 +567,60 @@ export default function WorkspaceIDEPage() {
                     </div>
                     <div className="mt-4 p-3 rounded-xl border border-border/50 bg-background/50 text-[11px] text-muted-foreground">
                       Click a file to view its content.
+                    </div>
+                  </motion.div>
+
+                ) : plan ? (
+                  /* Plan view */
+                  <motion.div key="plan-view" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                    className="space-y-4">
+
+                    {/* Plan header */}
+                    <div className="p-3 rounded-xl bg-primary/5 border border-primary/15">
+                      <h2 className="font-semibold text-sm text-foreground mb-1">{plan.title}</h2>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">{plan.description}</p>
+                    </div>
+
+                    {/* Tech stack */}
+                    <div>
+                      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-0.5">Tech Stack</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {Object.entries(plan.tech_stack).map(([k, v]) => (
+                          <span key={k} className="text-[10px] px-2 py-0.5 rounded-full bg-muted border border-border/50 text-foreground/70">
+                            <span className="text-muted-foreground">{k}: </span>{v}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Steps */}
+                    <div>
+                      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-0.5">
+                        {plan.steps.length} Steps
+                      </div>
+                      <div className="space-y-1.5">
+                        {plan.steps.map((step, i) => (
+                          <div key={step.id}
+                            className="flex gap-2.5 p-2.5 rounded-lg border border-border/40 bg-background/50 hover:bg-muted/30 transition-colors group">
+                            <div className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                              {i + 1}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-medium text-foreground leading-snug">{step.title}</div>
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-primary/10 text-primary/80 font-medium uppercase tracking-wide">
+                                  {String(step.agent).replace("AgentRole.", "").toLowerCase()}
+                                </span>
+                                {step.files_affected?.length > 0 && (
+                                  <span className="text-[9px] text-muted-foreground truncate">
+                                    {step.files_affected[0]}{step.files_affected.length > 1 ? ` +${step.files_affected.length - 1}` : ""}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </motion.div>
                 ) : null}
