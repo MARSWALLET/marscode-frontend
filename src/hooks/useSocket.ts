@@ -37,14 +37,13 @@ export interface ProjectComplete {
 
 interface UseSocketOptions {
   workspaceId: string
-  // Real backend events (what the orchestrator actually emits)
-  onAgentThought?: (data: AgentThought) => void       // agent:thought — thinking steps
-  onAgentResponse?: (data: AgentResponse) => void     // agent:response — final reply
-  onProjectPlan?: (data: ProjectPlan) => void         // project:plan — plan generated
-  onProjectComplete?: (data: ProjectComplete) => void // project:complete — done
-  onProjectError?: (data: ProjectError) => void       // project:error — error
+  onAgentThought?: (data: AgentThought) => void
+  onAgentResponse?: (data: AgentResponse) => void
+  onProjectPlan?: (data: ProjectPlan) => void
+  onProjectBuilding?: (data: { project_id: string; message: string }) => void
+  onProjectComplete?: (data: ProjectComplete) => void
+  onProjectError?: (data: ProjectError) => void
   onFileChanged?: (data: { project_id: string; path: string }) => void
-  // Legacy / streaming events (kept for forward-compat)
   onAgentStream?: (data: { token: string; project_id: string }) => void
   onAgentComplete?: (data: { project_id: string; message?: string }) => void
 }
@@ -54,6 +53,7 @@ export function useSocket({
   onAgentThought,
   onAgentResponse,
   onProjectPlan,
+  onProjectBuilding,
   onProjectComplete,
   onProjectError,
   onFileChanged,
@@ -83,29 +83,13 @@ export function useSocket({
       socket.emit("agent:subscribe", { project_id: workspaceId })
     })
 
-    // ── Real backend events ───────────────────────────────────────────────────
-    // Fired from orchestrator every time an agent emits a thought/progress step
     socket.on("agent:thought", (data) => onAgentThought?.(data))
-
-    // Fired when an agent finishes and has a final response (chat mode)
     socket.on("agent:response", (data) => onAgentResponse?.(data))
-
-    // Fired when the planner finishes creating an implementation plan
     socket.on("project:plan", (data) => onProjectPlan?.(data))
-
-    // Fired when the full project pipeline completes
-    socket.on("project:complete", (data) => {
-      onProjectComplete?.(data)
-      onAgentComplete?.(data)
-    })
-
-    // Fired on any unrecoverable error in the pipeline
+    socket.on("project:building", (data) => onProjectBuilding?.(data))
+    socket.on("project:complete", (data) => { onProjectComplete?.(data); onAgentComplete?.(data) })
     socket.on("project:error", (data) => onProjectError?.(data))
-
-    // Fired when a file changes in the sandbox
     socket.on("project:file_changed", (data) => onFileChanged?.(data))
-
-    // ── Legacy streaming events ───────────────────────────────────────────────
     socket.on("agent:stream", (data) => onAgentStream?.(data))
     socket.on("agent:complete", (data) => onAgentComplete?.(data))
 
@@ -151,7 +135,21 @@ export function useSocket({
     [workspaceId]
   )
 
+  const approvePlan = useCallback(
+    () => {
+      socketRef.current?.emit("plan:approve", { project_id: workspaceId })
+    },
+    [workspaceId]
+  )
+
+  const rejectPlan = useCallback(
+    () => {
+      socketRef.current?.emit("plan:reject", { project_id: workspaceId })
+    },
+    [workspaceId]
+  )
+
   const isConnected = () => socketRef.current?.connected ?? false
 
-  return { sendChat, startProject, requestFileTree, readFile, isConnected, socket: socketRef }
+  return { sendChat, startProject, requestFileTree, readFile, approvePlan, rejectPlan, isConnected, socket: socketRef }
 }

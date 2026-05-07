@@ -243,7 +243,7 @@ export default function WorkspaceIDEPage() {
 
   // ── Socket ────────────────────────────────────────────────────────────────
 
-  const { sendChat, requestFileTree, readFile, socket } = useSocket({
+  const { sendChat, requestFileTree, readFile, approvePlan, rejectPlan, socket } = useSocket({
     workspaceId: id,
 
     // Every "thought" the agent emits while working — accumulate them
@@ -279,6 +279,14 @@ export default function WorkspaceIDEPage() {
         content: `📋 Plan ready: **${planData?.title ?? "Implementation Plan"}** (${planData?.steps?.length ?? 0} steps) — see the panel →`,
         created_at: new Date().toISOString()
       }])
+    },
+
+    // Build pipeline started (after user approval)
+    onProjectBuilding: ({ project_id, message }) => {
+      if (project_id !== id) return
+      setAgentState("coding")
+      setThoughts([])
+      toast.success(message || "Build started!", { duration: 4000 })
     },
 
     // Project fully complete
@@ -621,6 +629,30 @@ export default function WorkspaceIDEPage() {
                           </div>
                         ))}
                       </div>
+                    </div>
+
+                    {/* Approve / Reject actions */}
+                    <div className="pt-2 space-y-2 border-t border-border/40 mt-2">
+                      <Button
+                        className="w-full gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
+                        onClick={() => {
+                          approvePlan()
+                          setPlan(null)
+                          setAgentState("coding")
+                          toast.success("Build approved! Agents are starting…")
+                        }}
+                        disabled={agentState === "coding"}
+                      >
+                        {agentState === "coding"
+                          ? <><Loader2 size={13} className="animate-spin" /> Building…</>
+                          : <><Zap size={13} /> Approve & Build</>}
+                      </Button>
+                      <Button variant="outline" className="w-full gap-2 text-muted-foreground"
+                        onClick={() => { rejectPlan(); setPlan(null) }}
+                        disabled={agentState === "coding"}
+                      >
+                        <X size={13} /> Reject Plan
+                      </Button>
                     </div>
                   </motion.div>
                 ) : null}
