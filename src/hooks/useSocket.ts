@@ -33,6 +33,12 @@ export interface ProjectComplete {
   project_id: string
   status: string
   files_count?: number
+  iterations?: number
+  total_tokens?: number
+  total_cost_usd?: number
+  build_passed?: boolean
+  preview_url?: string
+  walkthrough?: string
 }
 
 interface UseSocketOptions {
