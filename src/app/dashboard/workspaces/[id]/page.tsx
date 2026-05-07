@@ -8,6 +8,7 @@ import {
   Send, Bot, User, Code2, FileText, CheckCircle2, CircleDashed,
   ArrowLeft, Loader2, ChevronRight, ChevronDown, FolderOpen, File,
   Wifi, WifiOff, X, Sparkles, Zap, Globe, Terminal, ListChecks, Clock,
+  CheckCheck, AlertCircle, ChevronUp,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -60,6 +61,17 @@ interface ProjectPlanData {
   steps: PlanStep[]
 }
 
+interface WorkerTask {
+  id: string
+  title: string
+  description: string
+  agent: string
+  status: "pending" | "in_progress" | "done" | "failed"
+  files_affected: string[]
+  acceptance_criteria: string[]
+  estimated_minutes?: number
+}
+
 function authHeader() {
   const token = typeof window !== "undefined" ? localStorage.getItem("marscoder_access_token") : null
   return token ? { Authorization: `Bearer ${token}` } : {}
@@ -74,6 +86,92 @@ const SUGGESTIONS = [
   { icon: Code2, label: "Dashboard UI", prompt: "Build an analytics dashboard with charts, a sidebar, and a data table" },
   { icon: Zap, label: "Auth system", prompt: "Scaffold a full authentication system with login, register, JWT, and protected routes" },
 ]
+
+const AGENT_COLORS: Record<string, string> = {
+  backend:  "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  frontend: "bg-violet-500/10 text-violet-400 border-violet-500/20",
+  executor: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  tester:   "bg-green-500/10 text-green-400 border-green-500/20",
+  planner:  "bg-primary/10 text-primary border-primary/20",
+  exporter: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+}
+
+function TaskStatusIcon({ status }: { status: WorkerTask["status"] }) {
+  if (status === "done")       return <CheckCheck size={12} className="text-green-400 shrink-0" />
+  if (status === "in_progress") return <Loader2 size={12} className="text-primary animate-spin shrink-0" />
+  if (status === "failed")     return <AlertCircle size={12} className="text-red-400 shrink-0" />
+  return <CircleDashed size={12} className="text-muted-foreground/50 shrink-0" />
+}
+
+function TaskBar({ tasks }: { tasks: WorkerTask[] }) {
+  const [open, setOpen] = React.useState(false)
+  if (tasks.length === 0) return null
+
+  const done = tasks.filter(t => t.status === "done").length
+  const inProgress = tasks.filter(t => t.status === "in_progress").length
+
+  return (
+    <div className="max-w-3xl mx-auto mb-2">
+      <div className="relative">
+        {/* Pill trigger */}
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-card/80 backdrop-blur-sm text-xs text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all shadow-sm w-full justify-between"
+        >
+          <div className="flex items-center gap-2">
+            <ListChecks size={12} className="text-primary" />
+            <span className="font-medium text-foreground">{tasks.length} tasks</span>
+            <span className="text-muted-foreground">·</span>
+            <span className="text-green-400">{done} done</span>
+            {inProgress > 0 && <><span className="text-muted-foreground">·</span><span className="text-primary animate-pulse">{inProgress} running</span></>}
+          </div>
+          {open ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+        </button>
+
+        {/* Dropdown */}
+        <AnimatePresence>
+          {open && (
+            <motion.div
+              initial={{ opacity: 0, y: 8, scaleY: 0.95 }}
+              animate={{ opacity: 1, y: 0, scaleY: 1 }}
+              exit={{ opacity: 0, y: 8, scaleY: 0.95 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              style={{ transformOrigin: "bottom" }}
+              className="absolute bottom-full mb-2 left-0 right-0 max-h-72 overflow-y-auto rounded-xl border border-border/50 bg-card/95 backdrop-blur-xl shadow-2xl z-50 p-2 space-y-1"
+            >
+              {tasks.map((task, i) => (
+                <div key={task.id}
+                  className="flex gap-2.5 items-start p-2 rounded-lg hover:bg-muted/30 transition-colors group">
+                  <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+                    <span className="text-[9px] font-bold text-muted-foreground/50 w-4 text-right">{i + 1}</span>
+                    <TaskStatusIcon status={task.status} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className={`text-[10px] font-medium leading-snug ${
+                      task.status === "done" ? "line-through text-muted-foreground/50" : "text-foreground"
+                    }`}>{task.title}</span>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded border font-medium uppercase tracking-wide ${
+                        AGENT_COLORS[task.agent] ?? "bg-muted text-muted-foreground border-border/40"
+                      }`}>
+                        {task.agent}
+                      </span>
+                      {task.estimated_minutes && (
+                        <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
+                          <Clock size={8} />{task.estimated_minutes}m
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  )
+}
 
 // ── Empty / hero state ────────────────────────────────────────────────────────
 function EmptyState({ onSelect }: { onSelect: (prompt: string) => void }) {
@@ -233,6 +331,9 @@ export default function WorkspaceIDEPage() {
   const [thoughts, setThoughts] = useState<{ agent: string; thought: string }[]>([])
   // Plan from planner agent — shown in side panel
   const [plan, setPlan] = useState<ProjectPlanData | null>(null)
+  // Tasks + walkthrough from planner
+  const [tasks, setTasks] = useState<WorkerTask[]>([])
+  const [walkthrough, setWalkthrough] = useState<string>("")
   const [fileTree, setFileTree] = useState<FileNode[]>([])
   const [activeFile, setActiveFile] = useState<string | null>(null)
   const [fileContent, setFileContent] = useState<string | null>(null)
@@ -274,12 +375,18 @@ export default function WorkspaceIDEPage() {
       setThoughts([])
       setSending(false)
       if (planData) setPlan(planData)
-      // Just a short acknowledgement in chat — full plan is in the side panel
-      setMessages(prev => [...prev, {
-        id: makeId(), role: "agent", agent_type: "planner",
-        content: `📋 Plan ready: **${planData?.title ?? "Implementation Plan"}** (${planData?.steps?.length ?? 0} steps) — see the panel →`,
-        created_at: new Date().toISOString()
-      }])
+    },
+
+    // Tasks from planner
+    onProjectTasks: ({ project_id, tasks: newTasks }: { project_id: string; tasks: WorkerTask[] }) => {
+      if (project_id !== id) return
+      setTasks(newTasks)
+    },
+
+    // Walkthrough from planner
+    onProjectWalkthrough: ({ project_id, walkthrough: wt }: { project_id: string; walkthrough: string }) => {
+      if (project_id !== id) return
+      setWalkthrough(wt)
     },
 
     // Build pipeline started (after user approval)
@@ -510,6 +617,7 @@ export default function WorkspaceIDEPage() {
 
         {/* Floating input */}
         <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-background via-background/95 to-transparent">
+          <TaskBar tasks={tasks} />
           <div className="max-w-3xl mx-auto">
             <form onSubmit={handleSubmit}
               className="relative shadow-xl rounded-2xl overflow-hidden border border-border/50 bg-card focus-within:ring-1 focus-within:ring-primary focus-within:border-primary transition-all">
@@ -610,6 +718,16 @@ export default function WorkspaceIDEPage() {
                       <h2 className="font-semibold text-sm text-foreground mb-1">{plan.title}</h2>
                       <p className="text-[11px] text-muted-foreground leading-relaxed">{plan.description}</p>
                     </div>
+
+                    {/* Walkthrough */}
+                    {walkthrough && (
+                      <div className="px-1">
+                        <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">How it works</div>
+                        <p className="text-[11px] text-muted-foreground/80 leading-relaxed border-l-2 border-primary/30 pl-2.5 italic">
+                          {walkthrough}
+                        </p>
+                      </div>
+                    )}
 
                     {/* Tech stack */}
                     <div>

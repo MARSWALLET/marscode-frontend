@@ -40,6 +40,8 @@ interface UseSocketOptions {
   onAgentThought?: (data: AgentThought) => void
   onAgentResponse?: (data: AgentResponse) => void
   onProjectPlan?: (data: ProjectPlan) => void
+  onProjectTasks?: (data: { project_id: string; tasks: any[] }) => void
+  onProjectWalkthrough?: (data: { project_id: string; walkthrough: string }) => void
   onProjectBuilding?: (data: { project_id: string; message: string }) => void
   onProjectComplete?: (data: ProjectComplete) => void
   onProjectError?: (data: ProjectError) => void
@@ -53,6 +55,8 @@ export function useSocket({
   onAgentThought,
   onAgentResponse,
   onProjectPlan,
+  onProjectTasks,
+  onProjectWalkthrough,
   onProjectBuilding,
   onProjectComplete,
   onProjectError,
@@ -86,6 +90,8 @@ export function useSocket({
     socket.on("agent:thought", (data) => onAgentThought?.(data))
     socket.on("agent:response", (data) => onAgentResponse?.(data))
     socket.on("project:plan", (data) => onProjectPlan?.(data))
+    socket.on("project:tasks", (data) => onProjectTasks?.(data))
+    socket.on("project:walkthrough", (data) => onProjectWalkthrough?.(data))
     socket.on("project:building", (data) => onProjectBuilding?.(data))
     socket.on("project:complete", (data) => { onProjectComplete?.(data); onAgentComplete?.(data) })
     socket.on("project:error", (data) => onProjectError?.(data))
