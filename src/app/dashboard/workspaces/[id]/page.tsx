@@ -508,7 +508,7 @@ export default function WorkspaceIDEPage() {
     }
   }, [socket.current]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load workspace meta + history
+  // Load workspace meta + history + state
   useEffect(() => {
     if (!id) return
     const load = async () => {
