@@ -59,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      const response = await api.post("/api/v1/auth/login", { email, password })
+      const response = await api.post("/api/auth/login", { email, password })
       if (response.data.success) {
         handleAuthSuccess(response.data)
         return true
@@ -73,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (email: string, password: string, fullName?: string): Promise<boolean> => {
     try {
-      const response = await api.post("/api/v1/auth/register", { email, password, full_name: fullName })
+      const response = await api.post("/api/auth/register", { email, password, full_name: fullName })
       if (response.data.success) {
         handleAuthSuccess(response.data)
         return true
@@ -87,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const googleLogin = async (credential: string): Promise<boolean> => {
     try {
-      const response = await api.post("/api/v1/auth/google", { token: credential })
+      const response = await api.post("/api/auth/google", { token: credential })
       if (response.data.success) {
         handleAuthSuccess(response.data)
         return true
