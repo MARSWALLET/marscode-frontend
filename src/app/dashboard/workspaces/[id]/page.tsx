@@ -19,6 +19,8 @@ import { Badge } from "@/components/ui/badge"
 import { useSocket, AgentThought, AgentResponse, AgentLog } from "@/hooks/useSocket"
 import { api } from "@/lib/api"
 import { Square } from "lucide-react"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -96,72 +98,120 @@ function TaskStatusIcon({ status }: { status: WorkerTask["status"] }) {
 }
 
 function TaskBar({ tasks }: { tasks: WorkerTask[] }) {
-  const [open, setOpen] = React.useState(false)
-  if (tasks.length === 0) return null
+  const [dismissed, setDismissed] = React.useState(false)
+  const [expanded, setExpanded] = React.useState(false)
 
-  const done = tasks.filter(t => t.status === "done").length
-  const inProgress = tasks.filter(t => t.status === "in_progress").length
+  React.useEffect(() => {
+    setDismissed(false) // reset when new tasks come in
+  }, [tasks.length])
+
+  if (tasks.length === 0 || dismissed) return null
+
+  const done      = tasks.filter(t => t.status === "done").length
+  const running   = tasks.filter(t => t.status === "in_progress").length
+  const allDone   = done === tasks.length
+  const pct       = Math.round((done / tasks.length) * 100)
+
+  // Auto-dismiss 3s after all done
+  React.useEffect(() => {
+    if (!allDone) return
+    const t = setTimeout(() => setDismissed(true), 3000)
+    return () => clearTimeout(t)
+  }, [allDone])
 
   return (
-    <div className="max-w-3xl mx-auto mb-2">
-      <div className="relative">
-        {/* Pill trigger */}
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 8 }}
+      className="max-w-3xl mx-auto mb-2"
+    >
+      {/* Header row */}
+      <div className="flex items-center gap-2 mb-1.5">
+        <ListChecks size={11} className={allDone ? "text-green-400" : "text-primary"} />
+        <span className="text-[11px] font-semibold text-foreground/70">
+          {allDone ? "All tasks complete" : `${done}/${tasks.length} tasks done`}
+          {running > 0 && <span className="text-primary animate-pulse ml-1">· {running} running</span>}
+        </span>
+        {/* Progress bar */}
+        <div className="flex-1 h-1 rounded-full bg-muted/60 overflow-hidden mx-1">
+          <motion.div
+            className={`h-full rounded-full ${allDone ? "bg-green-500" : "bg-primary"}`}
+            initial={{ width: 0 }}
+            animate={{ width: `${pct}%` }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+          />
+        </div>
         <button
-          onClick={() => setOpen(o => !o)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-card/80 backdrop-blur-sm text-xs text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all shadow-sm w-full justify-between"
+          onClick={() => setExpanded(o => !o)}
+          className="text-[10px] text-muted-foreground hover:text-foreground transition-colors px-1"
         >
-          <div className="flex items-center gap-2">
-            <ListChecks size={12} className="text-primary" />
-            <span className="font-medium text-foreground">{tasks.length} tasks</span>
-            <span className="text-muted-foreground">·</span>
-            <span className="text-green-400">{done} done</span>
-            {inProgress > 0 && <><span className="text-muted-foreground">·</span><span className="text-primary animate-pulse">{inProgress} running</span></>}
-          </div>
-          {open ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+          {expanded ? <ChevronDown size={11} /> : <ChevronUp size={11} />}
         </button>
+        <button
+          onClick={() => setDismissed(true)}
+          className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <X size={11} />
+        </button>
+      </div>
 
-        {/* Dropdown */}
-        <AnimatePresence>
-          {open && (
-            <motion.div
-              initial={{ opacity: 0, y: 8, scaleY: 0.95 }}
-              animate={{ opacity: 1, y: 0, scaleY: 1 }}
-              exit={{ opacity: 0, y: 8, scaleY: 0.95 }}
-              transition={{ duration: 0.18, ease: "easeOut" }}
-              style={{ transformOrigin: "bottom" }}
-              className="absolute bottom-full mb-2 left-0 right-0 max-h-72 overflow-y-auto rounded-xl border border-border/50 bg-card/95 backdrop-blur-xl shadow-2xl z-50 p-2 space-y-1"
-            >
+      {/* Task pills — horizontal scroll */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+        {tasks.map((task) => (
+          <div
+            key={task.id}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-medium shrink-0 transition-all ${
+              task.status === "done"
+                ? "border-green-500/30 bg-green-500/10 text-green-400/70"
+                : task.status === "in_progress"
+                ? "border-primary/40 bg-primary/10 text-primary animate-pulse"
+                : task.status === "failed"
+                ? "border-red-500/30 bg-red-500/10 text-red-400"
+                : "border-border/40 bg-muted/30 text-muted-foreground"
+            }`}
+          >
+            <TaskStatusIcon status={task.status} />
+            <span className={task.status === "done" ? "line-through opacity-60" : ""}>{task.title}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Expanded detail view */}
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="overflow-hidden mt-1.5"
+          >
+            <div className="rounded-xl border border-border/50 bg-card/90 backdrop-blur-sm p-2 space-y-0.5">
               {tasks.map((task, i) => (
-                <div key={task.id}
-                  className="flex gap-2.5 items-start p-2 rounded-lg hover:bg-muted/30 transition-colors group">
-                  <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
-                    <span className="text-[9px] font-bold text-muted-foreground/50 w-4 text-right">{i + 1}</span>
+                <div key={task.id} className="flex gap-2 items-start p-1.5 rounded-lg hover:bg-muted/30 transition-colors">
+                  <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                    <span className="text-[9px] text-muted-foreground/40 w-3 text-right font-mono">{i + 1}</span>
                     <TaskStatusIcon status={task.status} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <span className={`text-[10px] font-medium leading-snug ${
-                      task.status === "done" ? "line-through text-muted-foreground/50" : "text-foreground"
-                    }`}>{task.title}</span>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded border font-medium uppercase tracking-wide ${
-                        AGENT_COLORS[task.agent] ?? "bg-muted text-muted-foreground border-border/40"
-                      }`}>
-                        {task.agent}
-                      </span>
-                      {task.estimated_minutes && (
-                        <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
-                          <Clock size={8} />{task.estimated_minutes}m
-                        </span>
-                      )}
-                    </div>
+                    <p className={`text-[11px] font-medium leading-snug ${
+                      task.status === "done" ? "line-through text-muted-foreground/40" : "text-foreground"
+                    }`}>{task.title}</p>
+                    {task.description && (
+                      <p className="text-[10px] text-muted-foreground/60 mt-0.5 leading-relaxed">{task.description}</p>
+                    )}
                   </div>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded border font-medium uppercase tracking-wide shrink-0 ${
+                    AGENT_COLORS[task.agent] ?? "bg-muted text-muted-foreground border-border/40"
+                  }`}>{task.agent}</span>
                 </div>
               ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   )
 }
 
@@ -208,27 +258,62 @@ function EmptyState({ onSelect }: { onSelect: (prompt: string) => void }) {
   )
 }
 
-// ── File Tree ─────────────────────────────────────────────────────────────────
-function FileTreeNode({ node, depth = 0, activeFile, onSelect }: {
-  node: FileNode; depth?: number; activeFile: string | null; onSelect: (p: string) => void
+// ── v0-style File Tree ────────────────────────────────────────────────────────
+
+// Map extension → colour class
+const EXT_COLOR: Record<string, string> = {
+  tsx: "text-sky-400", ts: "text-sky-400", jsx: "text-sky-400", js: "text-yellow-400",
+  py: "text-blue-400", go: "text-cyan-400", rs: "text-orange-400",
+  css: "text-violet-400", scss: "text-violet-400",
+  json: "text-green-400", yaml: "text-green-400", yml: "text-green-400", toml: "text-green-400",
+  md: "text-gray-400", txt: "text-gray-400",
+  html: "text-orange-400", svg: "text-pink-400",
+  env: "text-yellow-600", sh: "text-lime-400",
+}
+
+function FileIcon({ name }: { name: string }) {
+  const ext = name.split(".").pop()?.toLowerCase() ?? ""
+  const color = EXT_COLOR[ext] ?? "text-muted-foreground/60"
+  return <File className={`w-3.5 h-3.5 shrink-0 ${color}`} />
+}
+
+function FileTreeNode({
+  node, depth = 0, activeFile, newFiles, onSelect,
+}: {
+  node: FileNode; depth?: number; activeFile: string | null
+  newFiles: Set<string>; onSelect: (p: string) => void
 }) {
   const [open, setOpen] = useState(depth < 2)
+  const isNew = newFiles.has(node.path)
+
   if (node.type === "dir") {
     return (
       <div>
-        <button onClick={() => setOpen(o => !o)}
-          className="w-full flex items-center gap-1.5 px-2 py-1 rounded hover:bg-muted/50 text-sm text-muted-foreground transition-colors"
-          style={{ paddingLeft: `${8 + depth * 12}px` }}>
-          {open ? <ChevronDown className="w-3 h-3 shrink-0" /> : <ChevronRight className="w-3 h-3 shrink-0" />}
-          <FolderOpen className="w-3.5 h-3.5 shrink-0 text-yellow-500/80" />
-          <span className="truncate">{node.name}</span>
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="w-full flex items-center gap-1.5 py-[3px] pr-2 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors group"
+          style={{ paddingLeft: `${6 + depth * 14}px` }}
+        >
+          <span className="shrink-0 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors">
+            {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+          </span>
+          <FolderOpen className="w-3.5 h-3.5 shrink-0 text-yellow-500/70 group-hover:text-yellow-500 transition-colors" />
+          <span className="text-xs truncate">{node.name}</span>
         </button>
         <AnimatePresence>
           {open && node.children && (
-            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden">
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.13 }}
+              className="overflow-hidden"
+            >
               {node.children.map(child => (
-                <FileTreeNode key={child.path} node={child} depth={depth + 1} activeFile={activeFile} onSelect={onSelect} />
+                <FileTreeNode
+                  key={child.path} node={child} depth={depth + 1}
+                  activeFile={activeFile} newFiles={newFiles} onSelect={onSelect}
+                />
               ))}
             </motion.div>
           )}
@@ -236,15 +321,82 @@ function FileTreeNode({ node, depth = 0, activeFile, onSelect }: {
       </div>
     )
   }
+
+  const isActive = activeFile === node.path
   return (
-    <button onClick={() => onSelect(node.path)}
-      className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-sm transition-colors ${
-        activeFile === node.path ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+    <motion.button
+      onClick={() => onSelect(node.path)}
+      initial={isNew ? { opacity: 0, x: -6 } : false}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.25 }}
+      className={`w-full flex items-center gap-1.5 py-[3px] pr-2 rounded-md text-xs transition-all relative group ${
+        isActive
+          ? "bg-primary/10 text-primary font-medium border-l-2 border-primary"
+          : "text-muted-foreground hover:bg-muted/40 hover:text-foreground border-l-2 border-transparent"
       }`}
-      style={{ paddingLeft: `${8 + depth * 12}px` }}>
-      <File className="w-3.5 h-3.5 shrink-0" />
-      <span className="truncate">{node.name}</span>
-    </button>
+      style={{ paddingLeft: `${6 + depth * 14}px` }}
+    >
+      <FileIcon name={node.name} />
+      <span className="truncate flex-1 text-left">{node.name}</span>
+      {isNew && (
+        <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 animate-pulse" />
+      )}
+    </motion.button>
+  )
+}
+
+// ── Markdown renderer ────────────────────────────────────────────────────────
+function MarkdownContent({ content, className = "" }: { content: string; className?: string }) {
+  return (
+    <div className={`prose prose-sm dark:prose-invert max-w-none ${className}`}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+        // Headings
+        h1: ({ children }) => <h1 className="text-base font-bold mt-3 mb-1 text-foreground">{children}</h1>,
+        h2: ({ children }) => <h2 className="text-sm font-bold mt-2.5 mb-1 text-foreground">{children}</h2>,
+        h3: ({ children }) => <h3 className="text-[13px] font-semibold mt-2 mb-0.5 text-foreground">{children}</h3>,
+        // Paragraph
+        p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed text-[13px]">{children}</p>,
+        // Inline code
+        code: ({ inline, children, ...props }: any) =>
+          inline ? (
+            <code className="px-1 py-0.5 rounded bg-muted font-mono text-[11px] text-primary">{children}</code>
+          ) : (
+            <code className="block w-full overflow-x-auto font-mono text-[11px] leading-relaxed">{children}</code>
+          ),
+        // Code block
+        pre: ({ children }) => (
+          <pre className="my-2 p-3 rounded-lg bg-black/40 border border-white/10 overflow-x-auto text-[11px] font-mono text-green-300/90 leading-relaxed">
+            {children}
+          </pre>
+        ),
+        // Bold
+        strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+        // Italic
+        em: ({ children }) => <em className="italic text-foreground/80">{children}</em>,
+        // Links
+        a: ({ href, children }) => (
+          <a href={href} target="_blank" rel="noopener noreferrer"
+            className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors">
+            {children}
+          </a>
+        ),
+        // Lists
+        ul: ({ children }) => <ul className="my-1.5 ml-4 space-y-0.5 list-disc marker:text-muted-foreground/60">{children}</ul>,
+        ol: ({ children }) => <ol className="my-1.5 ml-4 space-y-0.5 list-decimal marker:text-muted-foreground/60">{children}</ol>,
+        li: ({ children }) => <li className="text-[13px] leading-relaxed">{children}</li>,
+        // Horizontal rule
+        hr: () => <hr className="my-3 border-border/30" />,
+        // Blockquote
+        blockquote: ({ children }) => (
+          <blockquote className="border-l-2 border-primary/40 pl-3 my-2 text-muted-foreground italic">{children}</blockquote>
+        ),
+      }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
   )
 }
 
@@ -264,20 +416,9 @@ function MessageBubble({ msg }: { msg: Message }) {
             <CheckCheck size={14} className="text-green-400 shrink-0" />
             <span className="text-xs font-semibold text-green-400 uppercase tracking-wider">Build Complete · Walkthrough</span>
           </div>
-          {/* Content rendered as markdown-like sections */}
-          <div className="px-4 py-4 text-sm text-foreground/90 leading-relaxed space-y-3">
-            {msg.content.split(/\n(?=##\s)/).map((section, i) => {
-              const lines = section.trim().split("\n")
-              const heading = lines[0].replace(/^#+\s*/, "")
-              const body = lines.slice(1).join("\n").trim()
-              return (
-                <div key={i}>
-                  {i > 0 && <div className="border-t border-border/30 my-3" />}
-                  <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">{heading}</div>
-                  <div className="text-[13px] text-foreground/80 whitespace-pre-wrap leading-relaxed">{body}</div>
-                </div>
-              )
-            })}
+          {/* Walkthrough content rendered as markdown */}
+          <div className="px-4 py-4">
+            <MarkdownContent content={msg.content} />
           </div>
         </div>
       </motion.div>
@@ -300,9 +441,12 @@ function MessageBubble({ msg }: { msg: Message }) {
           : "bg-transparent border border-border/50 text-foreground rounded-tl-sm"
       }`}>
         {msg.agent_type && !isUser && (
-          <div className="text-[10px] font-semibold text-primary/60 uppercase tracking-wider mb-1">{msg.agent_type}</div>
+          <div className="text-[10px] font-semibold text-primary/60 uppercase tracking-wider mb-1.5">{msg.agent_type}</div>
         )}
-        <span className="whitespace-pre-wrap">{msg.content}</span>
+        {isUser
+          ? <span className="whitespace-pre-wrap text-[13px]">{msg.content}</span>
+          : <MarkdownContent content={msg.content} />
+        }
         {msg.streaming && <span className="inline-block w-1.5 h-4 bg-primary ml-0.5 animate-pulse rounded-sm" />}
       </div>
       {isUser && (
@@ -315,28 +459,55 @@ function MessageBubble({ msg }: { msg: Message }) {
 }
 
 
-// ── Thought stream ─────────────────────────────────────────────────────────────
+// ── Thought stream — action pill style ────────────────────────────────────────
 function ThoughtStream({ thoughts }: { thoughts: { agent: string; thought: string }[] }) {
+  const latest = thoughts[thoughts.length - 1]
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-      className="flex gap-3 justify-start">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+      className="flex gap-3 justify-start"
+    >
       <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 mt-0.5">
         <Bot size={16} />
       </div>
-      <div className="px-4 py-3 rounded-2xl rounded-tl-sm border border-primary/20 bg-primary/5 text-sm max-w-[85%]">
-        <div className="flex items-center gap-2 mb-2">
-          <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
-          <span className="text-[10px] font-semibold text-primary/70 uppercase tracking-wider">Thinking</span>
-        </div>
-        <div className="space-y-1">
-          {thoughts.map((t, i) => (
-            <motion.div key={i} initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }}
-              className="text-muted-foreground text-xs leading-relaxed flex gap-1.5">
-              <span className="text-primary/40 shrink-0 font-mono text-[10px] mt-0.5">{t.agent}</span>
-              <span>{t.thought}</span>
-            </motion.div>
-          ))}
-        </div>
+      <div className="px-3 py-2.5 rounded-2xl rounded-tl-sm border border-primary/20 bg-primary/5 max-w-[85%] space-y-2">
+        {/* Latest action pill */}
+        {latest && (
+          <div className="flex items-center gap-2">
+            <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" />
+            <span className="text-[12px] text-foreground/90 leading-snug">{latest.thought}</span>
+          </div>
+        )}
+        {/* History — last 3 faded */}
+        {thoughts.length > 1 && (
+          <div className="space-y-0.5">
+            {thoughts.slice(-4, -1).map((t, i) => (
+              <motion.div key={i} initial={{ opacity: 0 }} animate={{ opacity: 0.4 }}
+                className="text-[11px] text-muted-foreground leading-relaxed flex gap-1.5 items-start">
+                <CheckCircle2 size={10} className="shrink-0 mt-0.5 text-green-500/60" />
+                <span>{t.thought}</span>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  )
+}
+
+// ── Streaming bubble (live token display) ─────────────────────────────────────
+function StreamingBubble({ content }: { content: string }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+      className="flex gap-3 justify-start"
+    >
+      <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 mt-0.5">
+        <Bot size={16} />
+      </div>
+      <div className="px-4 py-3 rounded-2xl rounded-tl-sm border border-border/50 bg-transparent max-w-[85%]">
+        <MarkdownContent content={content} />
+        <span className="inline-block w-1.5 h-4 bg-primary ml-0.5 animate-pulse rounded-sm align-middle" />
       </div>
     </motion.div>
   )
@@ -364,6 +535,8 @@ export default function WorkspaceIDEPage() {
   const [fileContent, setFileContent] = useState<string | null>(null)
   const [loadingFile, setLoadingFile] = useState(false)
   const [connected, setConnected] = useState(false)
+  const [streamingContent, setStreamingContent] = useState("")
+  const [newFiles, setNewFiles] = useState<Set<string>>(new Set())
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const isEmpty = messages.length === 0 && !loadingHistory
@@ -373,22 +546,31 @@ export default function WorkspaceIDEPage() {
   const { sendChat, requestFileTree, readFile, cancelBuild, socket } = useSocket({
     workspaceId: id,
 
-    // Every "thought" the agent emits while working — accumulate them
+    // Live token stream → accumulate in streamingContent
+    onAgentStream: ({ project_id, token }: { project_id: string; token: string }) => {
+      if (project_id !== id) return
+      setStreamingContent(prev => prev + token)
+      setThoughts([]) // hide thought pills once streaming starts
+    },
+
+    // Every "thought" the agent emits — show as action pills
     onAgentThought: ({ project_id, agent, thought }) => {
       if (project_id !== id) return
-      setAgentState("thinking")
       setThoughts(prev => [...prev, { agent, thought }])
     },
 
-    // Final response from the agent in chat mode
+    // Final response from the agent
     onAgentResponse: ({ project_id, message }) => {
       if (project_id !== id) return
       setAgentState("idle")
       setSending(false)
       setThoughts([])
-      if (message && !message.startsWith("**Error:**") || message) {
+      // Promote streamed content or final message into the chat
+      const finalContent = streamingContent.trim() || message
+      setStreamingContent("") // clear streaming buffer
+      if (finalContent) {
         setMessages(prev => [...prev, {
-          id: makeId(), role: "agent", content: message, created_at: new Date().toISOString()
+          id: makeId(), role: "agent", content: finalContent, created_at: new Date().toISOString()
         }])
       }
     },
@@ -473,9 +655,14 @@ export default function WorkspaceIDEPage() {
       }])
     },
 
-    onFileChanged: ({ project_id }) => {
+    onFileChanged: ({ project_id, path }: { project_id: string; path?: string }) => {
       if (project_id !== id) return
       requestFileTree()
+      // Mark new file for pulse animation, then clear after 4s
+      if (path) {
+        setNewFiles(prev => new Set(prev).add(path))
+        setTimeout(() => setNewFiles(prev => { const n = new Set(prev); n.delete(path); return n }), 4000)
+      }
     },
   })
 
@@ -650,10 +837,16 @@ export default function WorkspaceIDEPage() {
             <div className="max-w-3xl mx-auto flex flex-col gap-5 pb-36">
               {messages.map(msg => <MessageBubble key={msg.id} msg={msg} />)}
               <AnimatePresence>
-                {agentState === "thinking" && thoughts.length > 0 && (
+                {/* Thought pills — show while agent is calling tools */}
+                {thoughts.length > 0 && !streamingContent && (
                   <ThoughtStream thoughts={thoughts} />
                 )}
-                {agentState === "thinking" && thoughts.length === 0 && (
+                {/* Live token streaming bubble */}
+                {streamingContent && (
+                  <StreamingBubble key="streaming" content={streamingContent} />
+                )}
+                {/* Fallback spinner before first thought/token */}
+                {sending && thoughts.length === 0 && !streamingContent && (
                   <motion.div key="dot-thinking" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                     className="flex gap-3 justify-start">
                     <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0">
@@ -661,7 +854,7 @@ export default function WorkspaceIDEPage() {
                     </div>
                     <div className="px-4 py-3 rounded-2xl rounded-tl-sm border border-border/50 bg-transparent text-sm flex items-center gap-2">
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
-                      <span className="text-muted-foreground">Thinking…</span>
+                      <span className="text-muted-foreground">Starting up…</span>
                     </div>
                   </motion.div>
                 )}
@@ -749,7 +942,7 @@ export default function WorkspaceIDEPage() {
                     <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-1">Explorer</div>
                     <div className="space-y-0.5">
                       {fileTree.map(node => (
-                        <FileTreeNode key={node.path} node={node} activeFile={activeFile} onSelect={handleFileSelect} />
+                        <FileTreeNode key={node.path} node={node} activeFile={activeFile} newFiles={newFiles} onSelect={handleFileSelect} />
                       ))}
                     </div>
                     <div className="mt-4 p-3 rounded-xl border border-border/50 bg-background/50 text-[11px] text-muted-foreground">
