@@ -18,7 +18,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { useSocket, AgentThought, AgentResponse, AgentLog } from "@/hooks/useSocket"
 import { api } from "@/lib/api"
-import { Square } from "lucide-react"
+import { Square, PanelRight } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 
@@ -33,6 +33,7 @@ interface Message {
   content: string
   created_at: string | null
   streaming?: boolean
+  thoughts?: { agent: string; thought: string; timestamp?: string; tool?: string }[]
 }
 
 interface FileNode {
@@ -443,6 +444,27 @@ function MessageBubble({ msg }: { msg: Message }) {
         {msg.agent_type && !isUser && (
           <div className="text-[10px] font-semibold text-primary/60 uppercase tracking-wider mb-1.5">{msg.agent_type}</div>
         )}
+        
+        {/* Render thoughts if they exist */}
+        {!isUser && msg.thoughts && msg.thoughts.length > 0 && (
+          <div className="mb-3 space-y-1 bg-black/10 rounded-lg p-2 border border-border/40">
+            <details className="group cursor-pointer">
+              <summary className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5 select-none outline-none list-none">
+                <ChevronRight size={12} className="group-open:rotate-90 transition-transform text-primary/60" />
+                <span className="flex-1">Agent Activity ({msg.thoughts.length})</span>
+              </summary>
+              <div className="mt-2 space-y-1.5 pl-4 pb-1">
+                {msg.thoughts.map((t, i) => (
+                  <div key={i} className="text-[11px] text-muted-foreground leading-relaxed flex gap-1.5 items-start">
+                    <CheckCircle2 size={10} className="shrink-0 mt-0.5 text-green-500/60" />
+                    <span>{t.thought || t.message}</span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          </div>
+        )}
+
         {isUser
           ? <span className="whitespace-pre-wrap text-[13px]">{msg.content}</span>
           : <MarkdownContent content={msg.content} />
@@ -537,6 +559,7 @@ export default function WorkspaceIDEPage() {
   const [connected, setConnected] = useState(false)
   const [streamingContent, setStreamingContent] = useState("")
   const [newFiles, setNewFiles] = useState<Set<string>>(new Set())
+  const [isPanelOpen, setIsPanelOpen] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const isEmpty = messages.length === 0 && !loadingHistory
@@ -560,17 +583,21 @@ export default function WorkspaceIDEPage() {
     },
 
     // Final response from the agent
-    onAgentResponse: ({ project_id, message }) => {
+    onAgentResponse: ({ project_id, message, thoughts: incomingThoughts }) => {
       if (project_id !== id) return
       setAgentState("idle")
       setSending(false)
+      
+      // Grab thoughts from state or incoming payload
+      const finalThoughts = incomingThoughts || thoughts
       setThoughts([])
+      
       // Promote streamed content or final message into the chat
       const finalContent = streamingContent.trim() || message
       setStreamingContent("") // clear streaming buffer
-      if (finalContent) {
+      if (finalContent || (finalThoughts && finalThoughts.length > 0)) {
         setMessages(prev => [...prev, {
-          id: makeId(), role: "agent", content: finalContent, created_at: new Date().toISOString()
+          id: makeId(), role: "agent", content: finalContent, created_at: new Date().toISOString(), thoughts: finalThoughts
         }])
       }
     },
@@ -638,6 +665,7 @@ export default function WorkspaceIDEPage() {
           created_at: new Date().toISOString()
         }])
       }
+      setIsPanelOpen(true)
       toast.success("Build complete! 🎉", { duration: 5000 })
     },
 
@@ -705,6 +733,7 @@ export default function WorkspaceIDEPage() {
         const history: Message[] = histRes.data.messages.map((m: any) => ({
           id: m.id, role: m.role === "user" ? "user" : "agent",
           agent_type: m.agent_type, content: m.content, created_at: m.created_at,
+          thoughts: m.extra_metadata?.thoughts || [],
         }))
         setMessages(history)
       } catch {
@@ -771,8 +800,8 @@ export default function WorkspaceIDEPage() {
     setActiveFile(path); setFileContent(null); setLoadingFile(true); readFile(path)
   }
 
-  // Panel shows when: files exist, file open, OR a plan was generated
-  const isPanelOpen = fileTree.length > 0 || activeFile !== null || agentLogs.length > 0
+  // Helper to know if there's any content for the panel
+  const hasPanelContent = fileTree.length > 0 || activeFile !== null || agentLogs.length > 0
 
   if (loadingMeta) {
     return (
@@ -824,6 +853,17 @@ export default function WorkspaceIDEPage() {
             {connected
               ? <><Wifi className="w-3.5 h-3.5 text-green-500" /> <span className="hidden sm:inline">Connected</span></>
               : <><WifiOff className="w-3.5 h-3.5 text-red-400" /> <span className="hidden sm:inline">Reconnecting…</span></>}
+            {hasPanelContent && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`h-7 w-7 ml-2 transition-colors ${isPanelOpen ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => setIsPanelOpen(!isPanelOpen)}
+                title="Toggle Sidebar"
+              >
+                <PanelRight size={14} />
+              </Button>
+            )}
           </div>
         </div>
 
