@@ -404,20 +404,45 @@ function MarkdownContent({ content, className = "" }: { content: string; classNa
 // ── Message Bubble ─────────────────────────────────────────────────────────────
 function MessageBubble({ msg }: { msg: Message }) {
   const isUser = msg.role === "user"
+  const isSystem = msg.role === "system"
 
-  // Detect post-completion walkthrough (starts with ## What Was Built)
-  const isWalkthrough = !isUser && msg.content.startsWith("## What Was Built")
+  // ── System notice (slim warning bar) ──────────────────────────────────────
+  if (isSystem) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}
+        className="flex items-start gap-2.5 py-1">
+        <AlertCircle size={13} className="shrink-0 mt-0.5 text-yellow-500/80" />
+        <p className="text-[12px] text-yellow-600 dark:text-yellow-400/80 leading-relaxed">{msg.content}</p>
+      </motion.div>
+    )
+  }
+
+  // ── User message (right-aligned pill) ─────────────────────────────────────
+  if (isUser) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}
+        className="flex justify-end gap-3">
+        <div className="max-w-[78%] px-4 py-2.5 rounded-2xl rounded-tr-sm bg-muted text-foreground text-[13px] leading-relaxed whitespace-pre-wrap">
+          {msg.content}
+        </div>
+        <div className="w-7 h-7 rounded-full bg-primary/15 text-primary flex items-center justify-center shrink-0 mt-0.5">
+          <User size={14} />
+        </div>
+      </motion.div>
+    )
+  }
+
+  // ── Walkthrough card (build complete) ─────────────────────────────────────
+  const isWalkthrough = msg.content.startsWith("## What Was Built")
   if (isWalkthrough) {
     return (
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
         className="w-full">
         <div className="rounded-2xl border border-green-500/20 bg-green-500/5 overflow-hidden">
-          {/* Header */}
           <div className="flex items-center gap-2.5 px-4 py-2.5 bg-green-500/10 border-b border-green-500/15">
             <CheckCheck size={14} className="text-green-400 shrink-0" />
             <span className="text-xs font-semibold text-green-400 uppercase tracking-wider">Build Complete · Walkthrough</span>
           </div>
-          {/* Walkthrough content rendered as markdown */}
           <div className="px-4 py-4">
             <MarkdownContent content={msg.content} />
           </div>
@@ -426,56 +451,45 @@ function MessageBubble({ msg }: { msg: Message }) {
     )
   }
 
+  // ── Agent message — flat, no container ────────────────────────────────────
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}
-      className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
-      {!isUser && (
-        <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 mt-0.5">
-          <Bot size={16} />
-        </div>
-      )}
-      <div className={`px-4 py-3 rounded-2xl max-w-[85%] text-sm leading-relaxed ${
-        isUser
-          ? "bg-muted text-foreground rounded-tr-sm"
-          : msg.role === "system"
-          ? "bg-yellow-500/10 border border-yellow-500/20 text-yellow-700 dark:text-yellow-400 rounded-tl-sm"
-          : "bg-transparent border border-border/50 text-foreground rounded-tl-sm"
-      }`}>
-        {msg.agent_type && !isUser && (
-          <div className="text-[10px] font-semibold text-primary/60 uppercase tracking-wider mb-1.5">{msg.agent_type}</div>
-        )}
-        
-        {/* Render thoughts if they exist */}
-        {!isUser && msg.thoughts && msg.thoughts.length > 0 && (
-          <div className="mb-3 space-y-1 bg-black/10 rounded-lg p-2 border border-border/40">
-            <details className="group cursor-pointer">
-              <summary className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5 select-none outline-none list-none">
-                <ChevronRight size={12} className="group-open:rotate-90 transition-transform text-primary/60" />
-                <span className="flex-1">Agent Activity ({msg.thoughts.length})</span>
-              </summary>
-              <div className="mt-2 space-y-1.5 pl-4 pb-1">
-                {msg.thoughts.map((t, i) => (
-                  <div key={i} className="text-[11px] text-muted-foreground leading-relaxed flex gap-1.5 items-start">
-                    <CheckCircle2 size={10} className="shrink-0 mt-0.5 text-green-500/60" />
-                    <span>{t.thought || t.message}</span>
-                  </div>
-                ))}
-              </div>
-            </details>
-          </div>
+      className="flex gap-3 justify-start items-start group">
+
+      {/* Avatar dot */}
+      <div className="w-6 h-6 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 mt-1">
+        <Bot size={13} className="text-primary" />
+      </div>
+
+      {/* Content — no bubble, rendered flush */}
+      <div className="flex-1 min-w-0 pt-0.5">
+        {msg.agent_type && (
+          <div className="text-[10px] font-semibold text-primary/50 uppercase tracking-wider mb-1">{msg.agent_type}</div>
         )}
 
-        {isUser
-          ? <span className="whitespace-pre-wrap text-[13px]">{msg.content}</span>
-          : <MarkdownContent content={msg.content} />
-        }
-        {msg.streaming && <span className="inline-block w-1.5 h-4 bg-primary ml-0.5 animate-pulse rounded-sm" />}
+        {/* Collapsible agent thoughts */}
+        {msg.thoughts && msg.thoughts.length > 0 && (
+          <details className="group/thoughts mb-3 cursor-pointer">
+            <summary className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground select-none list-none outline-none w-fit">
+              <ChevronRight size={11} className="group-open/thoughts:rotate-90 transition-transform" />
+              <span>{msg.thoughts.length} action{msg.thoughts.length !== 1 ? "s" : ""}</span>
+            </summary>
+            <div className="mt-2 pl-3 border-l border-border/40 space-y-1.5">
+              {msg.thoughts.map((t, i) => (
+                <div key={i} className="text-[11px] text-muted-foreground/70 leading-relaxed flex gap-1.5 items-start">
+                  <CheckCircle2 size={10} className="shrink-0 mt-0.5 text-green-500/50" />
+                  <span>{(t as any).thought || (t as any).message}</span>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+
+        {/* The actual response — plain markdown on the page */}
+        <MarkdownContent content={msg.content} />
+
+        {msg.streaming && <span className="inline-block w-1.5 h-4 bg-primary ml-0.5 animate-pulse rounded-sm align-middle" />}
       </div>
-      {isUser && (
-        <div className="w-8 h-8 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center shrink-0 mt-0.5">
-          <User size={16} />
-        </div>
-      )}
     </motion.div>
   )
 }
@@ -522,12 +536,12 @@ function StreamingBubble({ content }: { content: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-      className="flex gap-3 justify-start"
+      className="flex gap-3 justify-start items-start"
     >
-      <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 mt-0.5">
-        <Bot size={16} />
+      <div className="w-6 h-6 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 mt-1">
+        <Bot size={13} className="text-primary" />
       </div>
-      <div className="px-4 py-3 rounded-2xl rounded-tl-sm border border-border/50 bg-transparent max-w-[85%]">
+      <div className="flex-1 min-w-0 pt-0.5">
         <MarkdownContent content={content} />
         <span className="inline-block w-1.5 h-4 bg-primary ml-0.5 animate-pulse rounded-sm align-middle" />
       </div>
