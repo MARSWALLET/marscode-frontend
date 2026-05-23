@@ -24,6 +24,7 @@ export interface AgentResponse {
   message: string
   actions?: any[]
   tokens_used?: number
+  thoughts?: { id?: string; tool?: string; thought?: string; message?: string; timestamp?: string }[]
 }
 
 export interface ProjectPlan {
